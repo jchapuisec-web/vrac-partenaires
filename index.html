@@ -203,10 +203,9 @@ input,select,textarea{font-family:inherit;font-size:15px}
   .side{width:auto;flex:none;height:auto;position:sticky;top:0;z-index:20;padding:10px 12px;
     padding-top:calc(10px + env(safe-area-inset-top))}
   .brand{padding:2px 4px 8px}
-  .nav{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
-  .nav::-webkit-scrollbar{display:none}
-  .nav-item{flex:0 0 auto;padding:9px 12px}
-  .nav-item .lb{display:none}
+  .nav{flex-direction:row;flex-wrap:wrap;gap:6px}
+  .nav-item{flex:0 0 auto;padding:8px 11px;font-size:13.5px}
+  .nav-item .lb{display:inline;flex:none}
   .nav-item .ct{background:rgba(255,255,255,.18)}
   .nav-sep{display:none}
   .side-foot{margin-top:8px;flex-direction:row;align-items:center;justify-content:space-between;padding-top:0}
