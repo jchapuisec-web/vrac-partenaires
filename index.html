@@ -270,6 +270,7 @@ input,select,textarea{font-family:inherit;font-size:15px}
   <button id="mRename">✏️ Renommer le club</button>
   <button id="mConnect">🔗 Partage entre bénévoles</button>
   <button id="mCerfa">🧾 Reçu CERFA (réglages)</button>
+  <button id="mRelance">✉️ Message de relance</button>
   <div class="sep"></div>
   <button id="mExportCsv">📤 Exporter (CSV Excel)</button>
   <button id="mExportJson">💾 Sauvegarder (fichier)</button>
@@ -308,6 +309,7 @@ let filtreResp='tous';
 let recherche='';
 let sb=null, cloud=false;
 let cerfaCfg=(()=>{try{return JSON.parse(localStorage.getItem('suiviPartenaires.cerfa'))||{}}catch(e){return{}}})();
+let relanceCfg=(()=>{try{return JSON.parse(localStorage.getItem('suiviPartenaires.relance'))||{}}catch(e){return{}}})();
 
 /* ---------- Utils ---------- */
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
@@ -627,6 +629,7 @@ function openDetail(id){
     transitions=`<button class="btn-primary" onclick="toClient('${p.id}')">🤝 Basculer en partenaire</button>`;
   }else if(estClient(p)){
     transitions=`<button class="btn-primary" onclick="genererCerfa('${p.id}')">🧾 Générer le reçu CERFA</button>
+                 <button class="btn-ghost" onclick="envoyerRelance('${p.id}')">✉️ Envoi relance</button>
                  <button class="btn-ghost" onclick="toProspect('${p.id}')">🎯 Repasser en prospect</button>
                  <button class="btn-danger" onclick="toPerdu('${p.id}')">❌ Client perdu</button>`;
   }else if(estPerdu(p)){
@@ -724,6 +727,8 @@ async function initStore(){
     if(st&&st.value){clubName=st.value;localStorage.setItem(LS_CLUB,clubName);}
     const {data:sc}=await sb.from('settings').select('value').eq('key','cerfa').maybeSingle();
     if(sc&&sc.value){try{cerfaCfg=JSON.parse(sc.value);localStorage.setItem('suiviPartenaires.cerfa',sc.value);}catch(e){}}
+    const {data:sr}=await sb.from('settings').select('value').eq('key','relance').maybeSingle();
+    if(sr&&sr.value){try{relanceCfg=JSON.parse(sr.value);localStorage.setItem('suiviPartenaires.relance',sr.value);}catch(e){}}
     cloud=true;subscribeRealtime();setStatus('online');render();
   }catch(e){console.error('Supabase init:',e);cloud=false;setStatus('err');toast('Connexion partage impossible — mode local');}
 }
@@ -738,6 +743,7 @@ function subscribeRealtime(){
       const n=payload.new;if(!n)return;
       if(n.key==='club'&&n.value){clubName=n.value;localStorage.setItem(LS_CLUB,clubName);render();}
       if(n.key==='cerfa'&&n.value){try{cerfaCfg=JSON.parse(n.value);localStorage.setItem('suiviPartenaires.cerfa',n.value);}catch(e){}}
+      if(n.key==='relance'&&n.value){try{relanceCfg=JSON.parse(n.value);localStorage.setItem('suiviPartenaires.relance',n.value);}catch(e){}}
     })
     .subscribe((status)=>{if(status==='SUBSCRIBED')setStatus('online');});
 }
@@ -771,6 +777,11 @@ const CERFA_DEFAULT={
   lieu:'Verdun-sur-le-Doubs',
   mailObjet:'Votre reçu fiscal — VRAC',
   mailCorps:'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal au titre de votre don au club. Nous vous remercions chaleureusement de votre soutien.\n\nSportivement,'
+};
+// Modèle d'email de relance (renouvellement) — modifiable via ⚙️ Message de relance
+const RELANCE_DEFAULT={
+  sujet:'Renouvellement de votre partenariat — VRAC',
+  corps:'Bonjour {contact},\n\nJe me permets de vous solliciter afin de revoir ensemble votre partenariat avec le Verdun Rugby Athlétic Club.\n\nVotre engagement (montant précédent : {montant}) arrive à échéance, et nous serions ravis de le reconduire pour la nouvelle saison. Pourriez-vous revenir vers moi pour en échanger ? Vous pouvez aussi me solliciter si vous souhaitez faire évoluer votre formule de partenariat.\n\nJe reste à votre disposition.\n\nSportivement,\n\nJean CHAPUIS\nCommission Partenaires VRAC\n0615392814'
 };
 
 function troisChiffres(n){
@@ -897,6 +908,43 @@ async function genererCerfa(id){
 }
 async function cloudReplaceAll(arr){if(!cloud)return;try{const {error:eDel}=await sb.from('partners').delete().neq('id','__none__');if(eDel)throw eDel;if(arr.length){const {error}=await sb.from('partners').upsert(arr.map(p=>({id:p.id,data:p})));if(error)throw error;}}catch(e){console.error(e);toast('⚠️ Synchro échouée');}}
 
+/* ============================================================
+   EMAIL DE RELANCE (manuel)
+   ============================================================ */
+function openRelanceConfig(){
+  document.getElementById('menu').classList.remove('open');
+  const r={...RELANCE_DEFAULT,...relanceCfg};
+  const drawer=document.getElementById('drawer');
+  drawer.innerHTML=`
+    <div class="drawer-head"><button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="closeOverlay()">✕</button><h2>✉️ Message de relance</h2></div>
+    <div class="drawer-body">
+      <p class="hint" style="margin-top:0">Texte de l'email de relance envoyé depuis une fiche. Balises disponibles : <b>{contact}</b>, <b>{nom}</b>, <b>{montant}</b>, <b>{responsable}</b> (remplacées automatiquement).</p>
+      <div class="field"><label>Objet de l'email</label><input id="rl_sujet" value="${esc(r.sujet)}"></div>
+      <div class="field"><label>Message</label><textarea id="rl_corps" style="min-height:220px">${esc(r.corps)}</textarea></div>
+    </div>
+    <div class="drawer-actions"><button class="btn-primary" onclick="saveRelanceConfig()">💾 Enregistrer</button></div>`;
+  openOverlay();
+}
+function saveRelanceConfig(){
+  relanceCfg={sujet:document.getElementById('rl_sujet').value.trim(),corps:document.getElementById('rl_corps').value};
+  const json=JSON.stringify(relanceCfg);
+  localStorage.setItem('suiviPartenaires.relance',json);
+  cloudSetSetting('relance',json);
+  closeOverlay();toast('Message de relance enregistré ✓');
+}
+function envoyerRelance(id){
+  const p=data.find(x=>x.id===id);if(!p)return;
+  if(!p.email){toast('Pas d\'email sur cette fiche');return;}
+  const r={...RELANCE_DEFAULT,...relanceCfg};
+  const montant=Number(p.montant)||Number(p.montantPaye)||0;
+  const rep=s=>(s||'').replace(/{nom}/g,p.nom||'').replace(/{contact}/g,p.contact||p.nom||'').replace(/{montant}/g,euros(montant)).replace(/{responsable}/g,p.responsable||'');
+  const sujet=rep(r.sujet), corps=rep(r.corps);
+  const a=document.createElement('a');a.href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(sujet)+'&body='+encodeURIComponent(corps);
+  document.body.appendChild(a);a.click();a.remove();
+  if(!p.histo)p.histo=[];p.histo.push({date:today(),txt:'Relance envoyée par email'});save();cloudUpsert(p);
+  toast('Email de relance ouvert ✉️');
+}
+
 function openConnect(){
   document.getElementById('menu').classList.remove('open');
   const drawer=document.getElementById('drawer');const connected=cloud;const baked=!!(BAKED.url&&BAKED.key);
@@ -925,6 +973,7 @@ menu.addEventListener('click',e=>e.stopPropagation());
 document.getElementById('mRename').onclick=()=>{const n=prompt('Nom du club / de l\'application :',clubName);if(n&&n.trim()){clubName=n.trim();localStorage.setItem(LS_CLUB,clubName);render();toast('Renommé ✓');cloudSetClub(clubName)}};
 document.getElementById('mConnect').onclick=()=>openConnect();
 document.getElementById('mCerfa').onclick=()=>openCerfaConfig();
+document.getElementById('mRelance').onclick=()=>openRelanceConfig();
 function etatLabel(p){return estClient(p)?'Partenaire':estProspect(p)?'Prospect':'Perdu'}
 function statutTexte(p){if(estClient(p))return clientAJour(p)?'À jour':'En retard';if(estProspect(p))return pstatutInfo(p).label;return 'Perdu'}
 document.getElementById('mExportCsv').onclick=()=>{
