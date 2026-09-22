@@ -870,15 +870,26 @@ async function genererCerfa(id){
     T('date4',auj); T('date5',auj); T('fill_11',c.lieu||c.benefCommune||'');
     const bytes=await doc.save();
     const fname='Recu_CERFA_'+(p.nom||'partenaire').replace(/[^\w]+/g,'_')+'_'+num+'.pdf';
-    dl(bytes,fname,'application/pdf');
     // trace dans l'historique
     if(!p.histo)p.histo=[];p.histo.push({date:today(),txt:`Reçu CERFA n°${num} généré (${euros(montant)})`});save();cloudUpsert(p);
-    // email pré-rempli
+    const sujet=c.mailObjet||'Votre reçu fiscal';
+    const corps=(c.mailCorps||'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal.');
+    // 1) Smartphone / navigateur compatible → partage natif AVEC le PDF en pièce jointe
+    try{
+      const file=new File([bytes],fname,{type:'application/pdf'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:sujet,text:corps+(p.email?('\n\nÀ envoyer à : '+p.email):'')});
+        toast('Reçu prêt à envoyer ✉️ (PDF joint)');
+        return;
+      }
+    }catch(e){ if(e&&e.name==='AbortError'){ dl(bytes,fname,'application/pdf'); toast('Partage annulé — reçu téléchargé'); return; } }
+    // 2) Repli (PC) → téléchargement du PDF + email pré-rempli (à joindre à la main)
+    dl(bytes,fname,'application/pdf');
     if(p.email){
-      const corps=(c.mailCorps||'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal.')+'\n\n(Reçu n°'+num+' — pensez à joindre le PDF « '+fname+' » téléchargé.)';
-      const mailto='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(c.mailObjet||'Votre reçu fiscal')+'&body='+encodeURIComponent(corps);
-      setTimeout(()=>{window.location.href=mailto;},600);
-      toast('Reçu téléchargé — email en préparation ✉️');
+      const body=corps+'\n\n(Reçu n°'+num+' — joignez le PDF « '+fname+' » qui vient d\'être téléchargé.)';
+      const a=document.createElement('a');a.href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(sujet)+'&body='+encodeURIComponent(body);
+      document.body.appendChild(a);a.click();a.remove();
+      toast('Reçu téléchargé — email ouvert (joignez le PDF)');
     }else{
       toast('Reçu téléchargé (pas d\'email sur la fiche)');
     }
