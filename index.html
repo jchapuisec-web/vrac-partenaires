@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d2e">
+<title>Suivi Partenaires — Club de Rugby</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="cerfa-template.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Partenaires VRAC">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --vert:#0b3d2e; --vert2:#12563f; --or:#c8a24a;
+  --bg:#f4f6f5; --card:#ffffff; --txt:#1c2321; --muted:#6b7772;
+  --bord:#e3e8e6; --ombre:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  --ombre2:0 8px 30px rgba(0,0,0,.14);
+  --ok:#27ae60; --ok-bg:#e7f6ee;
+  --late:#c0392b; --late-bg:#fdecea;
+  --todo:#2f80ed; --todo-bg:#e7f0fd;
+  --prog:#e2a336; --prog-bg:#fbf1dd;
+  --lost:#8a94a6; --lost-bg:#eef1f0;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:15px}
+
+.app{display:flex;min-height:100vh}
+
+/* ---------- SIDEBAR ---------- */
+.side{
+  width:250px;flex:0 0 250px;background:linear-gradient(180deg,var(--vert),var(--vert2));
+  color:#eef3f0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  padding:16px 12px;gap:6px;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 14px}
+.brand .logo{width:40px;height:40px;border-radius:11px;background:var(--or);color:var(--vert);
+  display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;flex:0 0 auto}
+.brand .cname{font-weight:700;font-size:15px;line-height:1.15;color:#fff}
+.brand .ctag{font-size:11px;opacity:.7}
+.nav{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.nav-item{
+  display:flex;align-items:center;gap:11px;width:100%;border:none;background:none;color:#dfeae4;
+  padding:11px 12px;border-radius:10px;font-size:14.5px;font-weight:600;text-align:left;transition:.13s;
+}
+.nav-item .ic{font-size:17px;width:20px;text-align:center;flex:0 0 auto}
+.nav-item .lb{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-item .ct{font-size:12px;font-weight:700;opacity:.85;background:rgba(255,255,255,.13);
+  padding:2px 8px;border-radius:20px;white-space:nowrap}
+.nav-item:hover{background:rgba(255,255,255,.09)}
+.nav-item.active{background:rgba(255,255,255,.16);color:#fff}
+.nav-item.active .ct{background:var(--or);color:var(--vert)}
+.nav-sep{height:1px;background:rgba(255,255,255,.12);margin:8px 8px}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:10px}
+.foot-row{display:flex;align-items:center;gap:8px}
+.perdus-link{background:none;border:none;color:#c6d3cc;font-size:12.5px;text-align:left;padding:4px 8px;opacity:.75}
+.perdus-link:hover{opacity:1;text-decoration:underline}
+.perdus-link.active{color:#fff;opacity:1;font-weight:700}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;
+  padding:6px 10px;border-radius:20px;background:rgba(255,255,255,.14);color:#fff;white-space:nowrap;border:none}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:#9aa;flex:0 0 auto}
+.pill.local .dot{background:#c9cf9a}
+.pill.wait .dot{background:var(--or);animation:pulse 1s infinite}
+.pill.online .dot{background:#4ade80}
+.pill.err .dot{background:#ef6a5a}
+@keyframes pulse{50%{opacity:.35}}
+.icon-btn{background:rgba(255,255,255,.14);border:none;color:#fff;width:34px;height:34px;border-radius:9px;
+  font-size:16px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.icon-btn:hover{background:rgba(255,255,255,.26)}
+
+/* ---------- MAIN ---------- */
+.main{flex:1;min-width:0;max-width:1100px;margin:0 auto;width:100%;padding:20px 22px 90px}
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.view-title{margin:0;font-size:22px;font-weight:800;flex:1;min-width:150px}
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search{position:relative}
+.search input{width:230px;max-width:46vw;padding:10px 12px 10px 36px;border:1px solid var(--bord);border-radius:10px;background:var(--card)}
+.search::before{content:"🔍";position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.6}
+.filter-select{padding:10px 12px;border:1px solid var(--bord);border-radius:10px;background:var(--card)}
+.btn-primary{background:var(--vert);color:#fff;border:none;padding:10px 15px;border-radius:10px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-primary:hover{background:var(--vert2)}
+.btn-ghost{background:none;border:1px solid var(--bord);color:var(--txt);padding:10px 14px;border-radius:10px;font-weight:600}
+.btn-danger{background:none;border:1px solid var(--late);color:var(--late);padding:10px 14px;border-radius:10px;font-weight:600}
+
+.subchips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.chip{border:1px solid var(--bord);background:var(--card);border-radius:20px;padding:6px 13px;font-size:13px;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.chip.active{background:var(--vert);color:#fff;border-color:var(--vert)}
+.chip .n{font-size:11px;opacity:.85}
+
+.content{margin-top:14px}
+.grp-title{font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;margin:18px 4px 10px;display:flex;align-items:center;gap:8px}
+.grp-title .n{background:var(--bord);color:var(--txt);border-radius:20px;padding:1px 9px;font-size:11px}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bord);border-radius:14px;padding:14px;box-shadow:var(--ombre);
+  cursor:pointer;transition:.13s;border-left:4px solid var(--bord);display:flex;flex-direction:column;gap:9px}
+.card:hover{box-shadow:var(--ombre2);transform:translateY(-1px)}
+.card.s-ok{border-left-color:var(--ok)}
+.card.s-late{border-left-color:var(--late)}
+.card.s-todo{border-left-color:var(--todo)}
+.card.s-prog{border-left-color:var(--prog)}
+.card.s-lost{border-left-color:var(--lost);opacity:.72}
+.card-h{display:flex;align-items:flex-start;gap:10px}
+.card-nom{font-size:15.5px;font-weight:700;flex:1;min-width:0}
+.card-nom small{display:block;font-weight:400;font-size:12px;color:var(--muted);margin-top:1px}
+.card-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.card-meta b{color:var(--txt);font-weight:600}
+.card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:1px}
+.amount{margin-left:auto;font-weight:800;font-size:16px;color:var(--vert)}
+
+.badge{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap}
+.badge.ok{background:var(--ok-bg);color:var(--ok)}
+.badge.late{background:var(--late-bg);color:var(--late)}
+.badge.todo{background:var(--todo-bg);color:var(--todo)}
+.badge.prog{background:var(--prog-bg);color:var(--prog)}
+.badge.lost{background:var(--lost-bg);color:var(--lost)}
+.badge.light{background:#eef1f0;color:var(--muted)}
+.mini{background:var(--vert);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600}
+.mini.ghost{background:none;border:1px solid var(--bord);color:var(--txt)}
+.mini:hover{opacity:.9}
+
+.recap{background:linear-gradient(135deg,#ffffff,var(--ok-bg));border:1px solid var(--bord);border-radius:16px;
+  padding:18px 20px;margin-bottom:6px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.recap.enc{background:linear-gradient(135deg,#ffffff,#eaf3fb)}
+.recap .big{font-size:34px;font-weight:800;color:var(--vert);line-height:1}
+.recap .lbl{font-size:13px;color:var(--muted);font-weight:600}
+.recap .sep{width:1px;align-self:stretch;background:var(--bord)}
+
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty .big{font-size:40px;margin-bottom:8px}
+
+/* ---------- DRAWER / OVERLAY (fiche) ---------- */
+.overlay{position:fixed;inset:0;background:rgba(15,25,20,.5);z-index:40;display:none;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.drawer{background:var(--card);width:100%;max-width:620px;max-height:92vh;overflow-y:auto;border-radius:16px;box-shadow:var(--ombre2);animation:pop .18s ease}
+@keyframes pop{from{transform:translateY(14px);opacity:.6}to{transform:translateY(0);opacity:1}}
+.drawer-head{position:sticky;top:0;background:var(--card);padding:15px 18px 12px;border-bottom:1px solid var(--bord);display:flex;align-items:center;gap:12px;z-index:2}
+.drawer-head h2{margin:0;font-size:17px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-body{padding:16px 18px}
+.drawer-actions{display:flex;gap:10px;padding:14px 18px;position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--bord);flex-wrap:wrap}
+.drawer-actions .btn-primary{flex:1;justify-content:center;min-width:130px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;padding:11px 12px;border:1px solid var(--bord);border-radius:10px;background:#fff;color:var(--txt)}
+.field textarea{resize:vertical;min-height:64px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.row2{grid-template-columns:1fr}}
+.seg2{display:flex;gap:8px;margin-bottom:16px}
+.seg2 button{flex:1;border:1px solid var(--bord);background:var(--card);border-radius:10px;padding:12px;font-weight:700;color:var(--muted)}
+.seg2 button.on{background:var(--vert);color:#fff;border-color:var(--vert)}
+.hint{font-size:12.5px;color:var(--muted);margin:-6px 0 14px}
+.hint b{color:var(--txt)}
+
+.detail-block{background:var(--bg);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.detail-block h3{margin:0 0 8px;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed var(--bord);font-size:14px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;text-align:right}
+.kv .v a{color:var(--vert);text-decoration:none}
+.histo{display:flex;flex-direction:column;gap:8px}
+.histo-item{background:#fff;border:1px solid var(--bord);border-radius:10px;padding:9px 11px;font-size:13.5px}
+.histo-item .h-date{font-size:11.5px;color:var(--muted);font-weight:600}
+.add-note{display:flex;gap:8px;margin-top:10px}
+.add-note input{flex:1;padding:10px 11px;border:1px solid var(--bord);border-radius:10px}
+.add-note button{background:var(--vert);color:#fff;border:none;border-radius:10px;padding:0 16px;font-weight:600}
+
+.menu{position:fixed;left:14px;bottom:70px;background:#fff;border:1px solid var(--bord);border-radius:12px;box-shadow:var(--ombre2);z-index:50;min-width:220px;overflow:hidden;display:none}
+.menu.open{display:block}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;padding:12px 14px;text-align:left;font-size:14px;color:var(--txt)}
+.menu button:hover{background:var(--bg)}
+.menu .sep{height:1px;background:var(--bord)}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--txt);color:#fff;padding:11px 18px;border-radius:24px;font-size:14px;font-weight:600;opacity:0;transition:.25s;z-index:60;pointer-events:none;box-shadow:var(--ombre2)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hidden{display:none!important}
+
+/* ---------- PORTAIL CODE D'ACCÈS ---------- */
+.gate{position:fixed;inset:0;z-index:100;background:linear-gradient(160deg,var(--vert),var(--vert2));
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.gate-card{background:var(--card);border-radius:18px;box-shadow:var(--ombre2);padding:30px 26px;max-width:360px;width:100%;text-align:center}
+.gate-logo{width:64px;height:64px;border-radius:16px;background:var(--or);color:var(--vert);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;margin:0 auto 16px}
+.gate-card h1{margin:0 0 4px;font-size:20px;color:var(--vert)}
+.gate-card p{margin:0 0 18px;color:var(--muted);font-size:14px}
+.gate-card input{width:100%;padding:13px 14px;border:1px solid var(--bord);border-radius:11px;font-size:16px;text-align:center;letter-spacing:1px}
+.gate-card button{width:100%;margin-top:12px;background:var(--vert);color:#fff;border:none;padding:13px;border-radius:11px;font-weight:700;font-size:15px}
+.gate-err{color:var(--late);font-size:13px;margin-top:10px;min-height:16px}
+
+/* ---------- MOBILE ---------- */
+@media(max-width:860px){
+  .app{flex-direction:column}
+  .side{width:auto;flex:none;height:auto;position:sticky;top:0;z-index:20;padding:10px 12px;
+    padding-top:calc(10px + env(safe-area-inset-top))}
+  .brand{padding:2px 4px 8px}
+  .nav{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav-item{flex:0 0 auto;padding:9px 12px}
+  .nav-item .lb{display:none}
+  .nav-item .ct{background:rgba(255,255,255,.18)}
+  .nav-sep{display:none}
+  .side-foot{margin-top:8px;flex-direction:row;align-items:center;justify-content:space-between;padding-top:0}
+  .main{padding:16px 14px 90px}
+  .menu{bottom:auto;top:120px}
+}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" style="display:none">
+  <div class="gate-card">
+    <div class="gate-logo">🏉</div>
+    <h1>Suivi Partenaires VRAC</h1>
+    <p>Accès réservé aux responsables du club</p>
+    <input type="password" id="gateInput" placeholder="Code d'accès" autocomplete="current-password" onkeydown="if(event.key==='Enter')tryGate()">
+    <button onclick="tryGate()">Entrer</button>
+    <div class="gate-err" id="gateErr"></div>
+  </div>
+</div>
+
+<div class="app">
+
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">🏉</div>
+      <div><div class="cname" id="clubName">Suivi Partenaires</div><div class="ctag">Suivi partenaires</div></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="nav-item" data-vue="partenaires" onclick="setVue('partenaires')"><span class="ic">🤝</span><span class="lb">Partenaires</span><span class="ct" id="ct-partenaires"></span></button>
+      <button class="nav-item" data-vue="prospects" onclick="setVue('prospects')"><span class="ic">🎯</span><span class="lb">Prospects</span><span class="ct" id="ct-prospects"></span></button>
+      <button class="nav-item" data-vue="taches" onclick="setVue('taches')"><span class="ic">⏰</span><span class="lb">Tâches en retard</span><span class="ct" id="ct-taches"></span></button>
+      <div class="nav-sep"></div>
+      <button class="nav-item" data-vue="caPromis" onclick="setVue('caPromis')"><span class="ic">💶</span><span class="lb">CA promis</span><span class="ct" id="ct-caPromis"></span></button>
+      <button class="nav-item" data-vue="caEncaisse" onclick="setVue('caEncaisse')"><span class="ic">💰</span><span class="lb">CA encaissé</span><span class="ct" id="ct-caEncaisse"></span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="foot-row">
+        <span class="pill local" id="syncPill" title="État de la synchronisation" onclick="openConnect()"><span class="dot"></span><span class="lbl">Local</span></span>
+        <button class="icon-btn" id="btnMenu" title="Réglages">⚙️</button>
+      </div>
+      <button class="perdus-link" data-vue="perdus" onclick="setVue('perdus')">🗑️ Perdus (<span id="ct-perdus">0</span>)</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1 class="view-title" id="viewTitle">Partenaires</h1>
+      <div class="tools">
+        <div class="search"><input type="text" id="search" placeholder="Rechercher…"></div>
+        <select class="filter-select" id="filterResp"><option value="tous">Tous les responsables</option></select>
+        <button class="btn-primary" id="btnAdd">＋ Nouveau</button>
+      </div>
+    </div>
+    <div class="subchips" id="subchips"></div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+
+<div class="menu" id="menu">
+  <button id="mRename">✏️ Renommer le club</button>
+  <button id="mConnect">🔗 Partage entre bénévoles</button>
+  <button id="mCerfa">🧾 Reçu CERFA (réglages)</button>
+  <div class="sep"></div>
+  <button id="mExportCsv">📤 Exporter (CSV Excel)</button>
+  <button id="mExportJson">💾 Sauvegarder (fichier)</button>
+  <button id="mImport">📥 Importer une sauvegarde</button>
+  <div class="sep"></div>
+  <button id="mReset" style="color:var(--late)">🗑️ Tout effacer</button>
+</div>
+
+<div class="overlay" id="overlay"><div class="drawer" id="drawer"></div></div>
+<input type="file" id="fileImport" accept=".json,application/json" class="hidden">
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   SUIVI PARTENAIRES — Club de Rugby (v2, menu latéral)
+   ============================================================ */
+const LS_KEY='suiviPartenaires.v1';
+const LS_CLUB='suiviPartenaires.club';
+const TYPES=['Sponsor maillot','Panneau / Bord de terrain','Encart programme','Dotation / Lots','Événementiel','Mécénat','Autre'];
+const PSTATUTS=[{id:'acontacter',label:'À contacter',cls:'todo'},{id:'propo',label:'Proposition en cours',cls:'prog'}];
+const RELANCE_MOIS=10; // relance = date de paiement + 10 mois
+
+/* ---------- Config Supabase ---------- */
+const BAKED={url:'https://qzyephioyqlldpkzxjtu.supabase.co',key:'sb_publishable_L44Gnhnn1AmHe0j23-I2aw_Fk9s8SMS'};
+const APP_CODE='VRAC71350';
+const SB_URL_KEY='suiviPartenaires.sbUrl';
+const SB_KEY_KEY='suiviPartenaires.sbKey';
+const CONFIG={url:BAKED.url||localStorage.getItem(SB_URL_KEY)||'',key:BAKED.key||localStorage.getItem(SB_KEY_KEY)||''};
+
+/* ---------- État ---------- */
+let data=load();
+let clubName=localStorage.getItem(LS_CLUB)||'Suivi Partenaires';
+let vue='partenaires';
+let sousFiltre='tous';
+let filtreResp='tous';
+let recherche='';
+let sb=null, cloud=false;
+let cerfaCfg=(()=>{try{return JSON.parse(localStorage.getItem('suiviPartenaires.cerfa'))||{}}catch(e){return{}}})();
+
+/* ---------- Utils ---------- */
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function load(){try{const r=localStorage.getItem(LS_KEY);return r?JSON.parse(r):[]}catch(e){return[]}}
+function save(){localStorage.setItem(LS_KEY,JSON.stringify(data));render()}
+function esc(s){return(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function euros(n){n=Number(n)||0;return n.toLocaleString('fr-FR')+' €'}
+function today(){return new Date().toISOString().slice(0,10)}
+function fmtDate(d){if(!d)return'';const[y,m,j]=d.split('-');return `${j}/${m}/${y}`}
+function joursEntre(d){if(!d)return null;const t=new Date(today()+'T00:00:00Z'),x=new Date(d+'T00:00:00Z');return Math.round((x-t)/86400000)}
+function addMonths(iso,n){const d=new Date(iso+'T00:00:00Z');const j=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+n);
+  const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(j,last));return d.toISOString().slice(0,10)}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+
+/* ---------- Modèle : normalisation & statuts ---------- */
+function normalize(p){
+  if(!p.etat){
+    if(p.statut==='refuse') p.etat='perdu';
+    else if(p.statut==='accord'||(Number(p.montantPaye)||0)>0) p.etat='client';
+    else p.etat='prospect';
+  }
+  if(p.etat==='prospect'&&!p.pstatut) p.pstatut=(p.statut==='acontacter')?'acontacter':'propo';
+  return p;
+}
+function relanceAuto(p){return p.datePaiement?addMonths(p.datePaiement,RELANCE_MOIS):''}
+function clientAJour(p){const r=relanceAuto(p);return r?joursEntre(r)>0:false}
+function estClient(p){return p.etat==='client'}
+function estProspect(p){return p.etat==='prospect'}
+function estPerdu(p){return p.etat==='perdu'}
+function estRetard(p){return estClient(p)&&!clientAJour(p)}
+function pstatutInfo(p){return PSTATUTS.find(s=>s.id===p.pstatut)||PSTATUTS[1]}
+
+/* ---------- Sélections ---------- */
+function clients(){return data.filter(estClient)}
+function prospects(){return data.filter(estProspect)}
+function perdus(){return data.filter(estPerdu)}
+function taches(){return clients().filter(p=>!clientAJour(p)).concat(prospects().filter(p=>p.pstatut==='acontacter'))}
+function totalPromis(){return clients().reduce((s,p)=>s+(Number(p.montant)||0),0)}
+function totalEncaisse(){return clients().reduce((s,p)=>s+(Number(p.montantPaye)||0),0)}
+function responsables(){return[...new Set(data.filter(p=>!estPerdu(p)).map(p=>(p.responsable||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
+
+/* ============================================================
+   RENDU
+   ============================================================ */
+function render(){
+  data.forEach(normalize);
+  document.getElementById('clubName').textContent=clubName;
+  renderNav();
+  renderRespFilter();
+  renderView();
+}
+
+function renderNav(){
+  document.getElementById('ct-partenaires').textContent=clients().length;
+  document.getElementById('ct-prospects').textContent=prospects().length;
+  document.getElementById('ct-taches').textContent=taches().length;
+  document.getElementById('ct-caPromis').textContent=euros(totalPromis());
+  document.getElementById('ct-caEncaisse').textContent=euros(totalEncaisse());
+  document.getElementById('ct-perdus').textContent=perdus().length;
+  document.querySelectorAll('.nav-item,.perdus-link').forEach(b=>b.classList.toggle('active',b.dataset.vue===vue));
+  const pl=document.querySelector('.perdus-link');
+  pl.style.display=perdus().length?'block':'none';
+}
+
+function renderRespFilter(){
+  const sel=document.getElementById('filterResp');const opts=responsables();
+  sel.style.display=opts.length?'':'none';
+  sel.innerHTML=`<option value="tous">Tous les responsables</option>`+opts.map(r=>`<option value="${esc(r)}" ${filtreResp===r?'selected':''}>${esc(r)}</option>`).join('');
+}
+
+function applyFilters(arr){
+  let l=arr.slice();
+  if(filtreResp!=='tous') l=l.filter(p=>(p.responsable||'').trim()===filtreResp);
+  if(recherche){const q=recherche.toLowerCase();
+    l=l.filter(p=>(p.nom+' '+(p.contact||'')+' '+(p.email||'')+' '+(p.ville||'')+' '+(p.responsable||'')).toLowerCase().includes(q));}
+  return l.sort((a,b)=>a.nom.localeCompare(b.nom));
+}
+
+function statusBadge(p){
+  if(estClient(p)) return clientAJour(p)?'<span class="badge ok">✔ À jour</span>':'<span class="badge late">⏰ En retard</span>';
+  if(estProspect(p)) return p.pstatut==='acontacter'?'<span class="badge todo">À contacter</span>':'<span class="badge prog">Propo en cours</span>';
+  return '<span class="badge lost">Perdu</span>';
+}
+function cardClass(p){
+  if(estClient(p)) return clientAJour(p)?'s-ok':'s-late';
+  if(estProspect(p)) return p.pstatut==='acontacter'?'s-todo':'s-prog';
+  return 's-lost';
+}
+function cardIcon(p){return estClient(p)?'🤝':estProspect(p)?'🎯':'🗑️'}
+
+function cardHtml(p,big){
+  const relance=relanceAuto(p);
+  let metaExtra='';
+  if(big==='promis') metaExtra=`<span class="amount">${euros(p.montant)}</span>`;
+  else if(big==='encaisse') metaExtra=`<span class="amount">${euros(p.montantPaye)}</span>`;
+  else if(estClient(p)){
+    if(Number(p.montant)>0) metaExtra=`<span>💶 <b>${euros(p.montant)}</b></span>`;
+    if(relance) metaExtra+=`<span>${clientAJour(p)?'🔁 Renouv. ':'⏰ Relance '}<b>${fmtDate(relance)}</b></span>`;
+  }else if(estProspect(p) && Number(p.montant)>0){
+    metaExtra=`<span>Potentiel <b>${euros(p.montant)}</b></span>`;
+  }
+  let quick='';
+  if(estProspect(p)) quick=`<button class="mini" onclick="event.stopPropagation();toClient('${p.id}')">→ Partenaire</button>`;
+  else if(estPerdu(p)) quick=`<button class="mini ghost" onclick="event.stopPropagation();restaurer('${p.id}')">♻️ Restaurer</button>`;
+  return `<div class="card ${cardClass(p)}" onclick="openDetail('${p.id}')">
+    <div class="card-h">
+      <div class="card-nom">${cardIcon(p)} ${esc(p.nom)}${p.type?`<small>${esc(p.type)}</small>`:''}</div>
+      ${p.responsable?`<span class="badge light">${esc(p.responsable)}</span>`:''}
+    </div>
+    <div class="card-meta">
+      ${p.contact?`<span>👤 ${esc(p.contact)}</span>`:''}
+      ${p.tel?`<span>📞 ${esc(p.tel)}</span>`:''}
+      ${metaExtra}
+    </div>
+    <div class="card-foot">${statusBadge(p)}${quick}</div>
+  </div>`;
+}
+
+function cardsGrid(arr){
+  if(!arr.length) return `<div class="empty"><div class="big">🏉</div>Aucune fiche ici.</div>`;
+  return `<div class="cards">${arr.map(p=>cardHtml(p)).join('')}</div>`;
+}
+
+function renderView(){
+  const title=document.getElementById('viewTitle');
+  const sub=document.getElementById('subchips');
+  const box=document.getElementById('content');
+  sub.innerHTML='';
+  const chip=(id,label,n)=>`<button class="chip ${sousFiltre===id?'active':''}" onclick="setSous('${id}')">${label} <span class="n">${n}</span></button>`;
+
+  if(vue==='partenaires'){
+    title.textContent='Partenaires';
+    const cl=clients();
+    const ajour=cl.filter(clientAJour), retard=cl.filter(p=>!clientAJour(p));
+    sub.innerHTML=chip('tous','Tous',cl.length)+chip('ajour','À jour',ajour.length)+chip('retard','En retard',retard.length);
+    let arr=sousFiltre==='ajour'?ajour:sousFiltre==='retard'?retard:cl;
+    box.innerHTML=cardsGrid(applyFilters(arr));
+
+  }else if(vue==='prospects'){
+    title.textContent='Prospects';
+    const pr=prospects();
+    const ac=pr.filter(p=>p.pstatut==='acontacter'), pp=pr.filter(p=>p.pstatut==='propo');
+    sub.innerHTML=chip('tous','Tous',pr.length)+chip('acontacter','À contacter',ac.length)+chip('propo','Propo en cours',pp.length);
+    let arr=sousFiltre==='acontacter'?ac:sousFiltre==='propo'?pp:pr;
+    box.innerHTML=cardsGrid(applyFilters(arr));
+
+  }else if(vue==='taches'){
+    title.textContent='Tâches en retard';
+    const retard=applyFilters(clients().filter(p=>!clientAJour(p)));
+    const acont=applyFilters(prospects().filter(p=>p.pstatut==='acontacter'));
+    let html='';
+    html+=`<div class="grp-title">⏰ Partenaires à relancer <span class="n">${retard.length}</span></div>`;
+    html+=retard.length?`<div class="cards">${retard.map(p=>cardHtml(p)).join('')}</div>`:`<div class="empty" style="padding:24px">Aucun partenaire en retard 👍</div>`;
+    html+=`<div class="grp-title">🎯 Prospects à contacter <span class="n">${acont.length}</span></div>`;
+    html+=acont.length?`<div class="cards">${acont.map(p=>cardHtml(p)).join('')}</div>`:`<div class="empty" style="padding:24px">Aucun prospect à contacter 👍</div>`;
+    box.innerHTML=html;
+
+  }else if(vue==='caPromis'){
+    title.textContent='CA promis';
+    const cl=applyFilters(clients().filter(p=>Number(p.montant)>0)).sort((a,b)=>(Number(b.montant)||0)-(Number(a.montant)||0));
+    box.innerHTML=`<div class="recap">
+        <div><div class="big">${euros(totalPromis())}</div><div class="lbl">Chiffre d'affaires promis · ${clients().length} partenaires</div></div>
+      </div>
+      <div class="grp-title">Détail par partenaire <span class="n">${cl.length}</span></div>
+      <div class="cards">${cl.map(p=>cardHtml(p,'promis')).join('')||''}</div>`;
+
+  }else if(vue==='caEncaisse'){
+    title.textContent='CA encaissé';
+    const cl=applyFilters(clients().filter(p=>Number(p.montantPaye)>0)).sort((a,b)=>(Number(b.montantPaye)||0)-(Number(a.montantPaye)||0));
+    const reste=totalPromis()-totalEncaisse();
+    box.innerHTML=`<div class="recap enc">
+        <div><div class="big">${euros(totalEncaisse())}</div><div class="lbl">Déjà encaissé · ${cl.length} paiements</div></div>
+        <div class="sep"></div>
+        <div><div class="big" style="color:var(--prog)">${euros(reste<0?0:reste)}</div><div class="lbl">Reste à encaisser</div></div>
+      </div>
+      <div class="grp-title">Détail des paiements <span class="n">${cl.length}</span></div>
+      <div class="cards">${cl.map(p=>cardHtml(p,'encaisse')).join('')||''}</div>`;
+
+  }else if(vue==='perdus'){
+    title.textContent='Clients perdus';
+    box.innerHTML=`<p style="color:var(--muted);font-size:14px;margin:0 0 4px">Masqués des listes. Vous pouvez les restaurer (ils repassent en prospect).</p>`+cardsGrid(applyFilters(perdus()));
+  }
+}
+
+function setVue(v){vue=v;sousFiltre='tous';document.getElementById('menu').classList.remove('open');render();window.scrollTo(0,0)}
+function setSous(s){sousFiltre=s;renderView()}
+document.getElementById('search').addEventListener('input',e=>{recherche=e.target.value;renderView()});
+document.getElementById('filterResp').addEventListener('change',e=>{filtreResp=e.target.value;renderView()});
+document.getElementById('btnAdd').onclick=()=>openForm();
+
+/* ============================================================
+   TRANSITIONS prospect / client / perdu
+   ============================================================ */
+function toClient(id){const p=data.find(x=>x.id===id);if(!p)return;p.etat='client';if(!p.dateAccord)p.dateAccord=today();delete p.pstatut;save();cloudUpsert(p);toast('🤝 Passé en partenaire');openDetail(id)}
+function toProspect(id){const p=data.find(x=>x.id===id);if(!p)return;p.etat='prospect';if(!p.pstatut)p.pstatut='propo';save();cloudUpsert(p);toast('🎯 Repassé en prospect');openDetail(id)}
+function toPerdu(id){const p=data.find(x=>x.id===id);if(!p)return;if(!confirm(`Marquer « ${p.nom} » comme perdu ? La fiche sera masquée des listes.`))return;p.etat='perdu';save();cloudUpsert(p);toast('Client perdu — masqué');closeOverlay()}
+function restaurer(id){const p=data.find(x=>x.id===id);if(!p)return;p.etat='prospect';if(!p.pstatut)p.pstatut='propo';save();cloudUpsert(p);toast('♻️ Restauré en prospect');closeOverlay()}
+function setPstatut(id,s){const p=data.find(x=>x.id===id);if(!p)return;p.pstatut=s;save();cloudUpsert(p);openDetail(id)}
+
+/* ============================================================
+   FORMULAIRE
+   ============================================================ */
+function openForm(id){
+  const p=id?data.find(x=>x.id===id):{etat:'prospect',pstatut:'acontacter'};
+  const isNew=!id;
+  const etat=p.etat==='client'?'client':'prospect';
+  const drawer=document.getElementById('drawer');
+  drawer.innerHTML=`
+    <div class="drawer-head">
+      <button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="closeOverlay()">✕</button>
+      <h2>${isNew?'Nouvelle fiche':'Modifier'}</h2>
+    </div>
+    <div class="drawer-body">
+      <input type="hidden" id="f_etat" value="${etat}">
+      <div class="seg2">
+        <button type="button" id="segP" class="${etat==='prospect'?'on':''}" onclick="formEtat('prospect')">🎯 Prospect</button>
+        <button type="button" id="segC" class="${etat==='client'?'on':''}" onclick="formEtat('client')">🤝 Partenaire</button>
+      </div>
+
+      <div class="field"><label>Nom de l'entreprise *</label><input id="f_nom" value="${esc(p.nom)}" placeholder="Ex : Garage Dupont"></div>
+      <div class="row2">
+        <div class="field"><label>Type de partenariat</label>
+          <select id="f_type"><option value="">—</option>${TYPES.map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Responsable (bénévole)</label>
+          <input id="f_responsable" list="respList" value="${esc(p.responsable)}" placeholder="Ex : Jean">
+          <datalist id="respList">${responsables().map(r=>`<option value="${esc(r)}">`).join('')}</datalist></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Contact (nom)</label><input id="f_contact" value="${esc(p.contact)}" placeholder="M. Dupont"></div>
+        <div class="field"><label>Téléphone</label><input id="f_tel" value="${esc(p.tel)}" placeholder="06 12 34 56 78"></div>
+      </div>
+      <div class="field"><label>Email</label><input id="f_email" type="email" value="${esc(p.email)}" placeholder="contact@entreprise.fr"></div>
+
+      <div id="blocProspect" style="display:${etat==='prospect'?'block':'none'}">
+        <div class="field"><label>Statut du prospect</label>
+          <select id="f_pstatut">${PSTATUTS.map(s=>`<option value="${s.id}" ${p.pstatut===s.id?'selected':''}>${s.label}</option>`).join('')}</select></div>
+        <div class="field"><label>Montant potentiel (€)</label><input id="f_montantP" type="number" min="0" step="10" value="${(etat==='prospect'&&p.montant)||''}" placeholder="0"></div>
+      </div>
+
+      <div id="blocClient" style="display:${etat==='client'?'block':'none'}">
+        <div class="detail-block">
+          <h3>💶 Partenariat & paiement</h3>
+          <div class="row2">
+            <div class="field"><label>Montant convenu (€)</label><input id="f_montant" type="number" min="0" step="10" value="${(etat==='client'&&p.montant)||''}" placeholder="0"></div>
+            <div class="field"><label>Montant encaissé (€)</label><input id="f_montantPaye" type="number" min="0" step="10" value="${p.montantPaye||''}" placeholder="0"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Date d'accord</label><input id="f_dateAccord" type="date" value="${p.dateAccord||''}"></div>
+            <div class="field"><label>Date de paiement <span style="font-weight:400">(= fin d'engagement)</span></label><input id="f_datePaiement" type="date" value="${p.datePaiement||''}" oninput="majRelance()"></div>
+          </div>
+          <div class="hint" id="relanceHint"></div>
+        </div>
+      </div>
+
+      <div class="field"><label>Adresse</label><input id="f_adresse" value="${esc(p.adresse)}" placeholder="N° et rue"></div>
+      <div class="row2">
+        <div class="field"><label>Code postal</label><input id="f_cp" value="${esc(p.cp)}" placeholder="71350"></div>
+        <div class="field"><label>Ville</label><input id="f_ville" value="${esc(p.ville)}" placeholder="Verdun-sur-le-Doubs"></div>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="f_notes" placeholder="Infos utiles…">${esc(p.notes)}</textarea></div>
+    </div>
+    <div class="drawer-actions">
+      ${isNew?'':`<button class="btn-danger" onclick="delPartner('${p.id}')">Supprimer</button>`}
+      <button class="btn-primary" onclick="savePartner('${id||''}')">💾 Enregistrer</button>
+    </div>`;
+  openOverlay();
+  majRelance();
+  setTimeout(()=>document.getElementById('f_nom').focus(),80);
+}
+function formEtat(e){
+  document.getElementById('f_etat').value=e;
+  document.getElementById('segP').classList.toggle('on',e==='prospect');
+  document.getElementById('segC').classList.toggle('on',e==='client');
+  document.getElementById('blocProspect').style.display=e==='prospect'?'block':'none';
+  document.getElementById('blocClient').style.display=e==='client'?'block':'none';
+}
+function majRelance(){
+  const el=document.getElementById('relanceHint');if(!el)return;
+  const dp=document.getElementById('f_datePaiement').value;
+  el.innerHTML=dp?`🔁 Prochaine relance calculée : <b>${fmtDate(addMonths(dp,RELANCE_MOIS))}</b> (paiement + ${RELANCE_MOIS} mois).`
+                 :`Renseignez la date de paiement : la relance sera fixée automatiquement à +${RELANCE_MOIS} mois.`;
+}
+function savePartner(id){
+  const g=x=>{const el=document.getElementById('f_'+x);return el?el.value.trim():''};
+  const nom=g('nom');if(!nom){toast('Indiquez au moins le nom');document.getElementById('f_nom').focus();return}
+  const etat=g('etat');
+  const obj={
+    etat, nom, type:g('type'), responsable:g('responsable'), contact:g('contact'), tel:g('tel'), email:g('email'),
+    adresse:g('adresse'), cp:g('cp'), ville:g('ville'), notes:g('notes'),
+  };
+  if(etat==='prospect'){
+    obj.pstatut=g('pstatut')||'acontacter';
+    obj.montant=g('montantP')||'';
+    obj.montantPaye=0; obj.dateAccord=''; obj.datePaiement='';
+  }else{
+    obj.montant=g('montant')||'';
+    obj.montantPaye=g('montantPaye')||'';
+    obj.dateAccord=g('dateAccord'); obj.datePaiement=g('datePaiement');
+    obj.dateRelance=obj.datePaiement?addMonths(obj.datePaiement,RELANCE_MOIS):'';
+  }
+  let rec;
+  if(id){rec=data.find(x=>x.id===id);Object.assign(rec,obj);}
+  else{obj.id=uid();obj.cree=today();obj.histo=[];data.unshift(obj);rec=obj;}
+  save();closeOverlay();toast('Fiche enregistrée ✓');cloudUpsert(rec);
+}
+function delPartner(id){if(!confirm('Supprimer cette fiche définitivement ?'))return;data=data.filter(x=>x.id!==id);save();closeOverlay();toast('Supprimé');cloudDelete(id)}
+
+/* ============================================================
+   FICHE DÉTAIL
+   ============================================================ */
+function openDetail(id){
+  const p=data.find(x=>x.id===id);if(!p)return;
+  const relance=relanceAuto(p);
+  const histo=(p.histo||[]).slice().reverse();
+  let transitions='';
+  if(estProspect(p)){
+    transitions=`<button class="btn-primary" onclick="toClient('${p.id}')">🤝 Basculer en partenaire</button>`;
+  }else if(estClient(p)){
+    transitions=`<button class="btn-primary" onclick="genererCerfa('${p.id}')">🧾 Générer le reçu CERFA</button>
+                 <button class="btn-ghost" onclick="toProspect('${p.id}')">🎯 Repasser en prospect</button>
+                 <button class="btn-danger" onclick="toPerdu('${p.id}')">❌ Client perdu</button>`;
+  }else if(estPerdu(p)){
+    transitions=`<button class="btn-primary" onclick="restaurer('${p.id}')">♻️ Restaurer</button>`;
+  }
+  let pstatutToggle='';
+  if(estProspect(p)){
+    pstatutToggle=`<div class="seg2" style="margin:0 0 12px">
+      <button type="button" class="${p.pstatut==='acontacter'?'on':''}" onclick="setPstatut('${p.id}','acontacter')">À contacter</button>
+      <button type="button" class="${p.pstatut==='propo'?'on':''}" onclick="setPstatut('${p.id}','propo')">Propo en cours</button></div>`;
+  }
+  const drawer=document.getElementById('drawer');
+  drawer.innerHTML=`
+    <div class="drawer-head">
+      <button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="closeOverlay()">✕</button>
+      <h2>${cardIcon(p)} ${esc(p.nom)}</h2>
+      <button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="openForm('${p.id}')" title="Modifier">✏️</button>
+    </div>
+    <div class="drawer-body">
+      <div class="card-foot" style="margin-bottom:14px">${statusBadge(p)}${p.type?`<span class="badge light">${esc(p.type)}</span>`:''}</div>
+      ${pstatutToggle}
+
+      <div class="detail-block">
+        <h3>Contact</h3>
+        ${p.responsable?kv('Responsable',esc(p.responsable)):''}
+        ${p.contact?kv('Interlocuteur',esc(p.contact)):''}
+        ${p.tel?kv('Téléphone',`<a href="tel:${esc(p.tel)}">${esc(p.tel)}</a>`):''}
+        ${p.email?kv('Email',`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`):''}
+        ${(p.adresse||p.cp||p.ville)?kv('Adresse',esc(((p.adresse?p.adresse+', ':'')+(p.cp||'')+' '+(p.ville||'')).trim())):''}
+        ${!p.responsable&&!p.contact&&!p.tel&&!p.email?'<div class="kv"><span class="k">—</span><span class="v">Non renseigné</span></div>':''}
+      </div>
+
+      ${estClient(p)?`
+      <div class="detail-block">
+        <h3>Partenariat</h3>
+        ${kv('Montant convenu',euros(p.montant))}
+        ${kv('Encaissé',euros(p.montantPaye))}
+        ${kv('Reste dû',euros((Number(p.montant)||0)-(Number(p.montantPaye)||0)))}
+        ${p.dateAccord?kv('Date d\'accord',fmtDate(p.dateAccord)):''}
+        ${p.datePaiement?kv('Date de paiement',fmtDate(p.datePaiement)+' <span style="font-weight:400;color:var(--muted)">(fin d\'engagement)</span>'):kv('Date de paiement','<span style="color:var(--late)">non payé</span>')}
+        ${relance?kv('Prochaine relance',`${fmtDate(relance)} ${joursEntre(relance)<0?'<span style="color:var(--late)">(dépassée)</span>':`(dans ${joursEntre(relance)} j)`}`):''}
+      </div>`:''}
+
+      ${estProspect(p)&&Number(p.montant)>0?`<div class="detail-block"><h3>Potentiel</h3>${kv('Montant estimé',euros(p.montant))}</div>`:''}
+
+      ${p.notes?`<div class="detail-block"><h3>Notes</h3><div style="white-space:pre-wrap;font-size:14px">${esc(p.notes)}</div></div>`:''}
+
+      <div class="detail-block">
+        <h3>Historique des échanges</h3>
+        <div class="histo">${histo.length?histo.map(h=>`<div class="histo-item"><div class="h-date">${fmtDate(h.date)}</div>${esc(h.txt)}</div>`).join(''):'<div style="font-size:13px;color:var(--muted)">Aucun échange noté.</div>'}</div>
+        <div class="add-note"><input id="noteInput" placeholder="Noter un appel, un email, un RDV…" onkeydown="if(event.key==='Enter')addNote('${p.id}')"><button onclick="addNote('${p.id}')">Ajouter</button></div>
+      </div>
+
+      <div class="drawer-actions" style="position:static;border:none;padding:0;margin-top:8px">${transitions}</div>
+    </div>
+    <div class="drawer-actions">
+      <button class="btn-ghost" onclick="closeOverlay()">Fermer</button>
+      <button class="btn-primary" onclick="openForm('${p.id}')">✏️ Modifier</button>
+    </div>`;
+  openOverlay();
+}
+function kv(k,v){return `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`}
+function addNote(id){const inp=document.getElementById('noteInput');const txt=inp.value.trim();if(!txt)return;const p=data.find(x=>x.id===id);if(!p.histo)p.histo=[];p.histo.push({date:today(),txt});save();openDetail(id);toast('Échange ajouté ✓');cloudUpsert(p)}
+
+/* ============================================================
+   OVERLAY
+   ============================================================ */
+function openOverlay(){document.getElementById('overlay').classList.add('open');document.body.style.overflow='hidden'}
+function closeOverlay(){document.getElementById('overlay').classList.remove('open');document.body.style.overflow=''}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeOverlay()});
+
+/* ============================================================
+   SYNCHRONISATION CLOUD (Supabase) — conservée
+   ============================================================ */
+function setStatus(state){
+  const pill=document.getElementById('syncPill');
+  const map={local:['local','Local'],wait:['wait','Connexion…'],online:['online','En ligne'],err:['err','Hors ligne']};
+  const [cls,lbl]=map[state]||map.local;pill.className='pill '+cls;pill.querySelector('.lbl').textContent=lbl;
+}
+async function initStore(){
+  if(!CONFIG.url||!CONFIG.key){setStatus('local');return;}
+  if(!window.supabase){setStatus('err');toast('Librairie de synchro non chargée (internet ?)');return;}
+  setStatus('wait');
+  try{
+    sb=window.supabase.createClient(CONFIG.url,CONFIG.key);
+    const localAvant=load();
+    const {data:rows,error}=await sb.from('partners').select('id,data').order('updated_at',{ascending:false});
+    if(error) throw error;
+    cloud=true;
+    if(rows.length===0&&localAvant.length>0){
+      if(confirm(`La base partagée est vide. Envoyer vos ${localAvant.length} fiche(s) de cet appareil vers le partage ?`)){data=localAvant;await cloudReplaceAll(data);}else{data=[];}
+    }else{data=rows.map(r=>r.data);}
+    localStorage.setItem(LS_KEY,JSON.stringify(data));
+    const {data:st}=await sb.from('settings').select('value').eq('key','club').maybeSingle();
+    if(st&&st.value){clubName=st.value;localStorage.setItem(LS_CLUB,clubName);}
+    const {data:sc}=await sb.from('settings').select('value').eq('key','cerfa').maybeSingle();
+    if(sc&&sc.value){try{cerfaCfg=JSON.parse(sc.value);localStorage.setItem('suiviPartenaires.cerfa',sc.value);}catch(e){}}
+    cloud=true;subscribeRealtime();setStatus('online');render();
+  }catch(e){console.error('Supabase init:',e);cloud=false;setStatus('err');toast('Connexion partage impossible — mode local');}
+}
+function subscribeRealtime(){
+  sb.channel('rt-partners')
+    .on('postgres_changes',{event:'*',schema:'public',table:'partners'},(payload)=>{
+      if(payload.eventType==='DELETE'){data=data.filter(p=>p.id!==(payload.old&&payload.old.id));}
+      else{const p=payload.new.data;const i=data.findIndex(x=>x.id===p.id);if(i>=0)data[i]=p;else data.unshift(p);}
+      localStorage.setItem(LS_KEY,JSON.stringify(data));render();
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'settings'},(payload)=>{
+      const n=payload.new;if(!n)return;
+      if(n.key==='club'&&n.value){clubName=n.value;localStorage.setItem(LS_CLUB,clubName);render();}
+      if(n.key==='cerfa'&&n.value){try{cerfaCfg=JSON.parse(n.value);localStorage.setItem('suiviPartenaires.cerfa',n.value);}catch(e){}}
+    })
+    .subscribe((status)=>{if(status==='SUBSCRIBED')setStatus('online');});
+}
+async function cloudUpsert(p){if(!cloud)return;try{const {error}=await sb.from('partners').upsert({id:p.id,data:p,updated_at:new Date().toISOString()});if(error)throw error;}catch(e){console.error(e);toast('⚠️ Synchro échouée (gardé en local)');}}
+async function cloudDelete(id){if(!cloud)return;try{const {error}=await sb.from('partners').delete().eq('id',id);if(error)throw error;}catch(e){console.error(e);toast('⚠️ Synchro échouée');}}
+async function cloudSetClub(name){if(!cloud)return;try{await sb.from('settings').upsert({key:'club',value:name});}catch(e){console.error(e);}}
+async function cloudSetSetting(key,value){if(!cloud)return;try{await sb.from('settings').upsert({key,value});}catch(e){console.error(e);}}
+
+/* ============================================================
+   REÇU CERFA 11580 (génération PDF via pdf-lib)
+   ============================================================ */
+// Choix des cases à cocher du formulaire (label lisible -> nom exact du champ PDF)
+const CERFA_TYPES={
+  'Œuvre ou organisme d\'intérêt général':'Oeuvre ou organisme dintérêt général',
+  'Association / fondation reconnue d\'utilité publique':'Association ou fondation reconnue dutilité publique par décret en date du',
+  'Fondation d\'entreprise':'Fondation dentreprise',
+  'Musée de France':'Musée de France',
+  'Fondation du patrimoine':'Fondation du patrimoine ou fondation ou association qui affecte irrévocablement les dons à la Fondation du',
+  'Autre organisme':'Autres organisme'
+};
+const CERFA_ARTICLES={'200 du CGI (particuliers)':'200 du CGI','238 bis du CGI (entreprises)':'238 bis du CGI','978 du CGI (IFI)':'978 du CGI'};
+const CERFA_MODES={'Chèque':'Chèque','Virement / CB / prélèvement':'Virement prélèvement carte bancaire','Espèces':'Remise despèces'};
+// Infos bénéficiaires FIGÉES (le club) — modifiables via ⚙️ Réglages CERFA
+const CERFA_DEFAULT={
+  benefNom:'Verdun Rugby Athlétic Club', benefN:'12', benefRue:'rue du Stade',
+  benefCP:'71350', benefCommune:'Verdun-sur-le-Doubs',
+  objet1:'Association sportive — pratique du rugby',
+  type:'Œuvre ou organisme d\'intérêt général',
+  article:'200 du CGI (particuliers)',
+  mode:'Virement / CB / prélèvement',
+  lieu:'Verdun-sur-le-Doubs',
+  mailObjet:'Votre reçu fiscal — VRAC',
+  mailCorps:'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal au titre de votre don au club. Nous vous remercions chaleureusement de votre soutien.\n\nSportivement,'
+};
+
+function troisChiffres(n){
+  const u=['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const d=['','','vingt','trente','quarante','cinquante','soixante','','quatre-vingt',''];
+  let s='';const c=Math.floor(n/100),r=n%100;
+  if(c){s+=(c>1?u[c]+' ':'')+'cent'+(c>1&&r===0?'s':'');if(r)s+=' ';}
+  if(r){ if(r<20)s+=u[r];
+    else{let diz=Math.floor(r/10),uni=r%10;
+      if(diz===7||diz===9){s+=d[diz-1]+'-'+u[10+uni];}
+      else{s+=d[diz];if(uni){if(uni===1&&diz!==8)s+=' et un';else s+='-'+u[uni];}else if(diz===8)s+='s';}
+    }}
+  return s;
+}
+function euroLettres(n){n=Math.floor(Math.abs(Number(n)||0));if(n===0)return 'zéro euro';
+  const mil=Math.floor(n%1e9/1e6),mille=Math.floor(n%1e6/1e3),reste=n%1000;let s=[];
+  if(mil)s.push(troisChiffres(mil)+' million'+(mil>1?'s':''));
+  if(mille)s.push(mille===1?'mille':troisChiffres(mille)+' mille');
+  if(reste)s.push(troisChiffres(reste));
+  return s.join(' ').trim()+' euro'+(n>1?'s':'');}
+function nbFr(x){return String(x).replace(/\B(?=(\d{3})+(?!\d))/g,' ')}
+function numRecu(){const d=new Date(),p=x=>String(x).padStart(2,'0');return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+p(d.getHours())+p(d.getMinutes());}
+
+/* ---------- Écran de réglages CERFA ---------- */
+function openCerfaConfig(){
+  document.getElementById('menu').classList.remove('open');
+  const c={...CERFA_DEFAULT,...cerfaCfg};
+  const opt=(map,cur)=>Object.keys(map).map(k=>`<option value="${esc(k)}" ${cur===k?'selected':''}>${esc(k)}</option>`).join('');
+  const drawer=document.getElementById('drawer');
+  drawer.innerHTML=`
+    <div class="drawer-head"><button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="closeOverlay()">✕</button><h2>🧾 Réglages du reçu CERFA</h2></div>
+    <div class="drawer-body">
+      <p class="hint" style="margin-top:0">Ces informations (le club bénéficiaire) sont identiques sur chaque reçu. Renseignez-les une fois — elles sont partagées avec les autres bénévoles.</p>
+      <div class="field"><label>Nom du bénéficiaire (le club)</label><input id="cf_nom" value="${esc(c.benefNom)}" placeholder="Verdun Rugby Athlétic Club"></div>
+      <div class="row2">
+        <div class="field"><label>N°</label><input id="cf_n" value="${esc(c.benefN)}" placeholder="12"></div>
+        <div class="field"><label>Rue</label><input id="cf_rue" value="${esc(c.benefRue)}" placeholder="rue du Stade"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Code postal</label><input id="cf_cp" value="${esc(c.benefCP)}" placeholder="71350"></div>
+        <div class="field"><label>Commune</label><input id="cf_commune" value="${esc(c.benefCommune)}" placeholder="Verdun-sur-le-Doubs"></div>
+      </div>
+      <div class="field"><label>Objet de l'organisme</label><input id="cf_objet1" value="${esc(c.objet1)}" placeholder="Association sportive — pratique du rugby"></div>
+      <div class="field"><label>Type d'organisme (case cochée)</label><select id="cf_type">${opt(CERFA_TYPES,c.type||'Œuvre ou organisme d\'intérêt général')}</select></div>
+      <div class="row2">
+        <div class="field"><label>Article du CGI</label><select id="cf_article">${opt(CERFA_ARTICLES,c.article||'200 du CGI (particuliers)')}</select></div>
+        <div class="field"><label>Mode de versement</label><select id="cf_mode">${opt(CERFA_MODES,c.mode||'Chèque')}</select></div>
+      </div>
+      <div class="field"><label>« Fait à » (lieu d'établissement)</label><input id="cf_lieu" value="${esc(c.lieu)}" placeholder="Verdun-sur-le-Doubs"></div>
+      <div class="detail-block">
+        <h3>✉️ Email d'accompagnement</h3>
+        <div class="field"><label>Objet de l'email</label><input id="cf_mailObjet" value="${esc(c.mailObjet||'Votre reçu fiscal — VRAC')}"></div>
+        <div class="field"><label>Message (le reçu sera à joindre)</label><textarea id="cf_mailCorps" style="min-height:90px">${esc(c.mailCorps||'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal au titre de votre don au club. Nous vous remercions chaleureusement de votre soutien.\n\nSportivement,')}</textarea></div>
+      </div>
+    </div>
+    <div class="drawer-actions"><button class="btn-primary" onclick="saveCerfaConfig()">💾 Enregistrer les réglages</button></div>`;
+  openOverlay();
+}
+function saveCerfaConfig(){
+  const g=x=>{const e=document.getElementById('cf_'+x);return e?e.value.trim():''};
+  cerfaCfg={benefNom:g('nom'),benefN:g('n'),benefRue:g('rue'),benefCP:g('cp'),benefCommune:g('commune'),
+    objet1:g('objet1'),type:g('type'),article:g('article'),mode:g('mode'),lieu:g('lieu'),
+    mailObjet:g('mailObjet'),mailCorps:document.getElementById('cf_mailCorps').value};
+  const json=JSON.stringify(cerfaCfg);
+  localStorage.setItem('suiviPartenaires.cerfa',json);
+  cloudSetSetting('cerfa',json);
+  closeOverlay();toast('Réglages CERFA enregistrés ✓');
+}
+
+/* ---------- Génération du reçu pour un partenaire ---------- */
+async function genererCerfa(id){
+  const p=data.find(x=>x.id===id);if(!p)return;
+  if(!window.PDFLib||!window.CERFA_TEMPLATE_B64){toast('Modèle CERFA non chargé (internet ?)');return;}
+  const c={...CERFA_DEFAULT,...cerfaCfg};
+  const montant=Number(p.montantPaye)||Number(p.montant)||0;
+  if(montant<=0){toast('Aucun montant sur cette fiche');return;}
+  const num=numRecu();
+  try{
+    toast('Génération du reçu…');
+    const bin=Uint8Array.from(atob(window.CERFA_TEMPLATE_B64),ch=>ch.charCodeAt(0));
+    const doc=await PDFLib.PDFDocument.load(bin);const form=doc.getForm();
+    const T=(name,val)=>{try{form.getTextField(name).setText(String(val||''));}catch(e){}};
+    const C=(name)=>{try{form.getCheckBox(name).check();}catch(e){}};
+    // bénéficiaire (club)
+    T('Adresse',c.benefNom); T('N',c.benefN); T('Rue',c.benefRue);
+    T('Code Postal',c.benefCP); T('Commune',c.benefCommune); T('Objet 1',c.objet1);
+    if(CERFA_TYPES[c.type]) C(CERFA_TYPES[c.type]);
+    if(CERFA_ARTICLES[c.article]) C(CERFA_ARTICLES[c.article]);
+    C('Déclaration de don manuel'); C('Numéraire');
+    if(CERFA_MODES[c.mode]) C(CERFA_MODES[c.mode]);
+    // donateur (partenaire)
+    T('Nom',p.nom); T('Adresse_2',p.adresse); T('Code Postal_2',p.cp); T('Commune_2',p.ville);
+    T('Euros',nbFr(montant)); T('Somme en toutes lettres',euroLettres(montant));
+    T('Numéro dordre du reçu',num);
+    // dates : la date du jour de génération partout ; « Fait à » = lieu
+    const auj=fmtDate(today());
+    T('date4',auj); T('date5',auj); T('fill_11',c.lieu||c.benefCommune||'');
+    const bytes=await doc.save();
+    const fname='Recu_CERFA_'+(p.nom||'partenaire').replace(/[^\w]+/g,'_')+'_'+num+'.pdf';
+    dl(bytes,fname,'application/pdf');
+    // trace dans l'historique
+    if(!p.histo)p.histo=[];p.histo.push({date:today(),txt:`Reçu CERFA n°${num} généré (${euros(montant)})`});save();cloudUpsert(p);
+    // email pré-rempli
+    if(p.email){
+      const corps=(c.mailCorps||'Bonjour,\n\nVeuillez trouver ci-joint votre reçu fiscal.')+'\n\n(Reçu n°'+num+' — pensez à joindre le PDF « '+fname+' » téléchargé.)';
+      const mailto='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(c.mailObjet||'Votre reçu fiscal')+'&body='+encodeURIComponent(corps);
+      setTimeout(()=>{window.location.href=mailto;},600);
+      toast('Reçu téléchargé — email en préparation ✉️');
+    }else{
+      toast('Reçu téléchargé (pas d\'email sur la fiche)');
+    }
+  }catch(e){console.error(e);toast('Erreur lors de la génération');}
+}
+async function cloudReplaceAll(arr){if(!cloud)return;try{const {error:eDel}=await sb.from('partners').delete().neq('id','__none__');if(eDel)throw eDel;if(arr.length){const {error}=await sb.from('partners').upsert(arr.map(p=>({id:p.id,data:p})));if(error)throw error;}}catch(e){console.error(e);toast('⚠️ Synchro échouée');}}
+
+function openConnect(){
+  document.getElementById('menu').classList.remove('open');
+  const drawer=document.getElementById('drawer');const connected=cloud;const baked=!!(BAKED.url&&BAKED.key);
+  drawer.innerHTML=`
+    <div class="drawer-head"><button class="icon-btn" style="background:var(--bg);color:var(--txt)" onclick="closeOverlay()">✕</button><h2>🔗 Partage entre bénévoles</h2></div>
+    <div class="drawer-body">
+      <p style="margin-top:0;color:var(--muted);font-size:14px">${connected?'✅ <b style="color:var(--ok)">Connecté.</b> Les données sont partagées en temps réel.':'Collez les 2 accès de votre projet Supabase (Project Settings → API).'}</p>
+      ${baked?'<p style="font-size:13px;color:var(--muted)">Accès intégrés à l\'application — rien à saisir.</p>':`
+      <div class="field"><label>URL du projet</label><input id="c_url" value="${esc(CONFIG.url)}" placeholder="https://xxxx.supabase.co"></div>
+      <div class="field"><label>Clé « anon / publishable »</label><textarea id="c_key" placeholder="sb_publishable_…">${esc(CONFIG.key)}</textarea></div>`}
+    </div>
+    <div class="drawer-actions">${connected?`<button class="btn-danger" onclick="disconnectCloud()">Déconnecter</button>`:''}${baked?'':`<button class="btn-primary" onclick="saveConnect()">🔌 Connecter</button>`}</div>`;
+  openOverlay();
+}
+function saveConnect(){const url=document.getElementById('c_url').value.trim().replace(/\/+$/,'');const key=document.getElementById('c_key').value.trim();if(!url||!key){toast('Renseignez l\'URL et la clé');return}localStorage.setItem(SB_URL_KEY,url);localStorage.setItem(SB_KEY_KEY,key);CONFIG.url=url;CONFIG.key=key;closeOverlay();toast('Connexion en cours…');initStore();}
+function disconnectCloud(){if(!confirm('Se déconnecter du partage ? Mode local sur cet appareil.'))return;localStorage.removeItem(SB_URL_KEY);localStorage.removeItem(SB_KEY_KEY);CONFIG.url='';CONFIG.key='';cloud=false;sb=null;setStatus('local');closeOverlay();toast('Déconnecté (mode local)');}
+
+/* ============================================================
+   MENU RÉGLAGES + EXPORT / IMPORT
+   ============================================================ */
+const menu=document.getElementById('menu');
+document.getElementById('btnMenu').addEventListener('click',e=>{e.stopPropagation();menu.classList.toggle('open')});
+document.addEventListener('click',()=>menu.classList.remove('open'));
+menu.addEventListener('click',e=>e.stopPropagation());
+
+document.getElementById('mRename').onclick=()=>{const n=prompt('Nom du club / de l\'application :',clubName);if(n&&n.trim()){clubName=n.trim();localStorage.setItem(LS_CLUB,clubName);render();toast('Renommé ✓');cloudSetClub(clubName)}};
+document.getElementById('mConnect').onclick=()=>openConnect();
+document.getElementById('mCerfa').onclick=()=>openCerfaConfig();
+function etatLabel(p){return estClient(p)?'Partenaire':estProspect(p)?'Prospect':'Perdu'}
+function statutTexte(p){if(estClient(p))return clientAJour(p)?'À jour':'En retard';if(estProspect(p))return pstatutInfo(p).label;return 'Perdu'}
+document.getElementById('mExportCsv').onclick=()=>{
+  const cols=['categorie','statut','nom','type','responsable','contact','tel','email','montant','montantPaye','dateAccord','datePaiement','dateRelance','adresse','cp','ville','notes'];
+  const head=['Catégorie','Statut','Nom','Type','Responsable','Contact','Téléphone','Email','Montant convenu','Encaissé','Date accord','Date paiement','Relance','Adresse','CP','Ville','Notes'];
+  const q=s=>`"${String(s==null?'':s).replace(/"/g,'""')}"`;
+  const lines=[head.map(q).join(';')];
+  data.forEach(p=>lines.push(cols.map(c=>q(
+    c==='categorie'?etatLabel(p):c==='statut'?statutTexte(p):c==='dateRelance'?relanceAuto(p):p[c])).join(';')));
+  dl('﻿'+lines.join('\r\n'),'partenaires.csv','text/csv');toast('Export CSV téléchargé');
+};
+document.getElementById('mExportJson').onclick=()=>{dl(JSON.stringify({club:clubName,data},null,2),'sauvegarde-partenaires.json','application/json');toast('Sauvegarde téléchargée')};
+document.getElementById('mImport').onclick=()=>document.getElementById('fileImport').click();
+document.getElementById('fileImport').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const obj=JSON.parse(r.result);const arr=Array.isArray(obj)?obj:obj.data;if(!Array.isArray(arr))throw 0;
+    if(!confirm(`Importer ${arr.length} fiche(s) ? Cela remplacera les données actuelles.`))return;
+    data=arr;if(obj.club){clubName=obj.club;localStorage.setItem(LS_CLUB,clubName)}save();toast('Import réussi ✓');cloudReplaceAll(arr);if(obj.club)cloudSetClub(obj.club);
+  }catch(err){toast('Fichier invalide')}};r.readAsText(f);e.target.value='';
+});
+document.getElementById('mReset').onclick=()=>{if(!confirm('Effacer TOUTES les données ? (pensez à sauvegarder avant)'))return;if(!confirm('Vraiment tout effacer ? Action irréversible.'))return;data=[];save();toast('Données effacées');cloudReplaceAll([])};
+function dl(content,name,type){const b=new Blob([content],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+
+/* ============================================================
+   PORTAIL CODE D'ACCÈS
+   ============================================================ */
+let appStarted=false;
+function startApp(){ if(appStarted)return; appStarted=true; render(); initStore(); }
+function tryGate(){
+  const v=document.getElementById('gateInput').value.trim();
+  if(v===APP_CODE){
+    try{localStorage.setItem('suiviPartenaires.auth',APP_CODE);}catch(e){}
+    document.getElementById('gate').style.display='none';
+    startApp();
+  }else{
+    document.getElementById('gateErr').textContent='Code incorrect';
+    document.getElementById('gateInput').value='';
+  }
+}
+function checkGate(){
+  let ok=false; try{ok=localStorage.getItem('suiviPartenaires.auth')===APP_CODE;}catch(e){}
+  if(ok){ document.getElementById('gate').style.display='none'; startApp(); }
+  else{ document.getElementById('gate').style.display='flex'; setTimeout(()=>document.getElementById('gateInput').focus(),100); }
+}
+
+/* ---------- Init ---------- */
+checkGate();
+</script>
+</body>
+</html>
